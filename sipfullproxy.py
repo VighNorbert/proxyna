@@ -293,7 +293,7 @@ class UDPHandler(socketserver.BaseRequestHandler):
                 logging.info("<<< %s" % data[0])
                 logging.debug("---\n<< server send [%d]:\n%s\n---" % (len(text), text))
             else:
-                self.sendResponse("480 Temporarily Unavailable")
+                self.sendResponse("480 Volaný účastník je dočasne nedostupný")
         else:
             self.sendResponse("500 Server Internal Error")
 
