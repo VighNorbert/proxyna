@@ -2,9 +2,12 @@ import sipfullproxy as sfp
 import socket
 import socketserver
 import re
+import logging
 
 hostname = socket.gethostname()
 ipaddress = socket.gethostbyname(hostname)
+
+logging.basicConfig(format='%(asctime)s [%(levelname)s] %(message)s', filename='out.log', level=logging.INFO, datefmt='%Y-%m-%dT%H:%M:%S')
 
 print("Automaticky zistená IP adresa: %s\nAk si želáte použiť inú, napíšte ju. Inak stlačte ENTER." % ipaddress)
 alternateip = input()
@@ -18,6 +21,7 @@ if re.search("^[0-9]{1,5}$", port) is None:
 port = int(port)
 
 print("Spúšťam server na: %s:%d" % (ipaddress, port))
+logging.info("Spusteny proxy server na: %s:%d" % (ipaddress, port))
 sfp.recordroute = "Record-Route: <sip:%s:%d;lr>" % (ipaddress, port)
 sfp.topvia = "Via: SIP/2.0/UDP %s:%d" % (ipaddress, port)
 server = socketserver.UDPServer((sfp.HOST, port), sfp.UDPHandler)

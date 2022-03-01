@@ -51,7 +51,7 @@ rx_code = re.compile("^SIP/2.0 ([^ ]*)")
 rx_invalid = re.compile("^192\.168")
 rx_invalid2 = re.compile("^10\.")
 # rx_cseq = re.compile("^CSeq:")
-# rx_callid = re.compile("Call-ID: (.*)$")
+rx_callid = re.compile("Call-ID: (.*)$")
 # rx_rr = re.compile("^Record-Route:")
 rx_request_uri = re.compile("^([^ ]*) sip:([^ ]*) SIP/2.0")
 rx_route = re.compile("^Route:")
@@ -68,6 +68,8 @@ rx_expires = re.compile("^Expires: (.*)$")
 recordroute = ""
 topvia = ""
 registrar = {}
+
+callhistory = {}
 
 
 def hexdump(chars, sep, width):
@@ -208,7 +210,7 @@ class UDPHandler(socketserver.BaseRequestHandler):
         text = "\r\n".join(data).encode("utf-8")
         self.socket.sendto(text, self.client_address)
         showtime()
-        logging.info("<<< %s" % data[0])
+        # logging.info("<<< %s" % data[0])
         logging.debug("---\n<< server send [%d]:\n%s\n---" % (len(text), text))
 
     def processRegister(self):
@@ -256,18 +258,18 @@ class UDPHandler(socketserver.BaseRequestHandler):
         if expires == 0:
             if fromm in registrar:
                 del registrar[fromm]
-                self.sendResponse("200 0K")
+                self.sendResponse("200 OK")
                 return
         else:
             now = int(time.time())
             validity = now + expires
 
-        logging.info("From: %s - Contact: %s" % (fromm, contact))
+        # logging.info("From: %s - Contact: %s" % (fromm, contact))
         logging.debug("Client address: %s:%s" % self.client_address)
         logging.debug("Expires= %d" % expires)
         registrar[fromm] = [contact, self.socket, self.client_address, validity]
         self.debugRegister()
-        self.sendResponse("200 0K")
+        self.sendResponse("200 OK")
 
     def processInvite(self):
         logging.debug("-----------------")
@@ -279,7 +281,7 @@ class UDPHandler(socketserver.BaseRequestHandler):
             return
         destination = self.getDestination()
         if len(destination) > 0:
-            logging.info("destination %s" % destination)
+            # logging.info("destination %s" % destination)
             if destination in registrar and self.checkValidity(destination):
                 socket, claddr = self.getSocketInfo(destination)
                 # self.changeRequestUri()
@@ -290,7 +292,10 @@ class UDPHandler(socketserver.BaseRequestHandler):
                 text = "\r\n".join(data).encode("utf-8")
                 socket.sendto(text, claddr)
                 showtime()
-                logging.info("<<< %s" % data[0])
+                cid = self.getCallid()
+                logging.info("%s - Ucastnik %s vola ucastnikovi %s." % (cid, origin, destination))
+                callhistory[cid] = 0
+                # logging.info("<<< %s" % data[0])
                 logging.debug("---\n<< server send [%d]:\n%s\n---" % (len(text), text))
             else:
                 self.sendResponse("480 Volaný účastník je dočasne nedostupný")
@@ -303,7 +308,7 @@ class UDPHandler(socketserver.BaseRequestHandler):
         logging.debug("--------------")
         destination = self.getDestination()
         if len(destination) > 0:
-            logging.info("destination %s" % destination)
+            # logging.info("destination %s" % destination)
             if destination in registrar:
                 socket, claddr = self.getSocketInfo(destination)
                 # self.changeRequestUri()
@@ -314,10 +319,10 @@ class UDPHandler(socketserver.BaseRequestHandler):
                 text = "\r\n".join(data).encode("utf-8")
                 socket.sendto(text, claddr)
                 showtime()
-                logging.info("<<< %s" % data[0])
+                # logging.info("<<< %s" % data[0])
                 logging.debug("---\n<< server send [%d]:\n%s\n---" % (len(text), text))
 
-    def processNonInvite(self):
+    def processNonInvite(self, type = None):
         logging.debug("----------------------")
         logging.debug(" NonInvite received   ")
         logging.debug("----------------------")
@@ -327,7 +332,7 @@ class UDPHandler(socketserver.BaseRequestHandler):
             return
         destination = self.getDestination()
         if len(destination) > 0:
-            logging.info("destination %s" % destination)
+            # logging.info("destination %s" % destination)
             if destination in registrar and self.checkValidity(destination):
                 socket, claddr = self.getSocketInfo(destination)
                 # self.changeRequestUri()
@@ -338,7 +343,9 @@ class UDPHandler(socketserver.BaseRequestHandler):
                 text = "\r\n".join(data).encode("utf-8")
                 socket.sendto(text, claddr)
                 showtime()
-                logging.info("<<< %s" % data[0])
+                if type == 'BYE':
+                    logging.info("%s - Ukonceny hovor ucastnikom %s." % (self.getCallid(), origin))
+                # logging.info("<<< %s" % data[0])
                 logging.debug("---\n<< server send [%d]:\n%s\n---" % (len(text), text))
             else:
                 self.sendResponse("406 Not Acceptable")
@@ -350,13 +357,19 @@ class UDPHandler(socketserver.BaseRequestHandler):
         if len(origin) > 0:
             logging.debug("origin %s" % origin)
             if origin in registrar:
+                if "200" in self.data[0].split(" "):
+                    cid = self.getCallid()
+                    if cid in callhistory:
+                        callhistory[cid] += 1
+                        if callhistory[cid] == 1:
+                            logging.info("%s - Prijaty hovor ucastnikom %s." % (cid, origin))
                 socket, claddr = self.getSocketInfo(origin)
                 self.data = self.removeRouteHeader()
                 data = self.removeTopVia()
                 text = "\r\n".join(data).encode("utf-8")
                 socket.sendto(text, claddr)
                 showtime()
-                logging.info("<<< %s" % data[0])
+                # logging.info("<<< %s" % data[0])
                 logging.debug("---\n<< server send [%d]:\n%s\n---" % (len(text), text))
 
     def processRequest(self):
@@ -370,7 +383,7 @@ class UDPHandler(socketserver.BaseRequestHandler):
             elif rx_ack.search(request_uri):
                 self.processAck()
             elif rx_bye.search(request_uri):
-                self.processNonInvite()
+                self.processNonInvite('BYE')
             elif rx_cancel.search(request_uri):
                 self.processNonInvite()
             elif rx_options.search(request_uri):
@@ -386,11 +399,11 @@ class UDPHandler(socketserver.BaseRequestHandler):
             elif rx_update.search(request_uri):
                 self.processNonInvite()
             elif rx_subscribe.search(request_uri):
-                self.sendResponse("200 0K")
+                self.sendResponse("200 OK")
             elif rx_publish.search(request_uri):
-                self.sendResponse("200 0K")
+                self.sendResponse("200 OK")
             elif rx_notify.search(request_uri):
-                self.sendResponse("200 0K")
+                self.sendResponse("200 OK")
             elif rx_code.search(request_uri):
                 self.processCode()
             else:
@@ -405,7 +418,7 @@ class UDPHandler(socketserver.BaseRequestHandler):
         request_uri = self.data[0]
         if rx_request_uri.search(request_uri) or rx_code.search(request_uri):
             showtime()
-            logging.info(">>> %s" % request_uri)
+            # logging.info(">>> %s" % request_uri)
             logging.debug("---\n>> server received [%d]:\n%s\n---" % (len(data), data))
             logging.debug("Received from %s:%d" % self.client_address)
             self.processRequest()
@@ -415,6 +428,14 @@ class UDPHandler(socketserver.BaseRequestHandler):
                 logging.warning("---\n>> server received [%d]:" % len(data))
                 hexdump(data, ' ', 16)
                 logging.warning("---")
+
+    def getCallid(self):
+        cid = None
+        for d in self.data:
+            cid = rx_callid.search(d)
+            if cid is not None:
+                return d
+        return cid
 
 
 if __name__ == "__main__":
