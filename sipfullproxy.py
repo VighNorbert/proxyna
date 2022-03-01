@@ -322,7 +322,7 @@ class UDPHandler(socketserver.BaseRequestHandler):
                 # logging.info("<<< %s" % data[0])
                 logging.debug("---\n<< server send [%d]:\n%s\n---" % (len(text), text))
 
-    def processNonInvite(self, type = None):
+    def processNonInvite(self, type=None):
         logging.debug("----------------------")
         logging.debug(" NonInvite received   ")
         logging.debug("----------------------")
@@ -345,6 +345,10 @@ class UDPHandler(socketserver.BaseRequestHandler):
                 showtime()
                 if type == 'BYE':
                     logging.info("%s - Ukonceny hovor ucastnikom %s." % (self.getCallid(), origin))
+                elif type == 'CANCEL':
+                    cid = self.getCallid()
+                    logging.info("%s - Zruseny hovor ucastnikom %s." % (cid, origin))
+                    callhistory[cid] += 1
                 # logging.info("<<< %s" % data[0])
                 logging.debug("---\n<< server send [%d]:\n%s\n---" % (len(text), text))
             else:
@@ -363,6 +367,12 @@ class UDPHandler(socketserver.BaseRequestHandler):
                         callhistory[cid] += 1
                         if callhistory[cid] == 1:
                             logging.info("%s - Prijaty hovor ucastnikom %s." % (cid, origin))
+                elif "603" in self.data[0].split(" "):
+                    cid = self.getCallid()
+                    if cid in callhistory:
+                        callhistory[cid] += 1
+                        if callhistory[cid] == 1:
+                            logging.info("%s - Neprijaty hovor ucastnikom %s." % (cid, origin))
                 socket, claddr = self.getSocketInfo(origin)
                 self.data = self.removeRouteHeader()
                 data = self.removeTopVia()
@@ -385,7 +395,7 @@ class UDPHandler(socketserver.BaseRequestHandler):
             elif rx_bye.search(request_uri):
                 self.processNonInvite('BYE')
             elif rx_cancel.search(request_uri):
-                self.processNonInvite()
+                self.processNonInvite('CANCEL')
             elif rx_options.search(request_uri):
                 self.processNonInvite()
             elif rx_info.search(request_uri):
